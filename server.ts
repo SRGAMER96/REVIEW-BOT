@@ -152,7 +152,7 @@ async function startServer() {
   }
 
   // Auto-start bot on boot
-  const botToken = process.env.BOT_TOKEN || '8949126540:AAEC475bE115rUe9y99l-X5zT5l7HveB4v0';
+  const botToken = process.env.BOT_TOKEN || '8949126540:AAEcBGaulew5JRcODPSHlAjiT39O-Q0B4v0';
   console.log('Starting Telegram bot engine automatically on server boot...');
   botManager.start({
     token: botToken,

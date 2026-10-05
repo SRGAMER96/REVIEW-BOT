@@ -1309,13 +1309,36 @@ class BotManager {
         return ctx.editMessageText(`❌ ${toSansBold('𝗪𝗶𝘁𝗵𝗱𝗿𝗮𝘄𝗮𝗹 𝗥𝗲𝗷𝗲𝗰𝘁𝗲𝗱 & 𝗥𝗲𝗳𝘂𝗻𝗱𝗲𝗱')}`);
       });
 
-      // 3. Test Bot connection via getMe()
-      const botUser = await bot.telegram.getMe();
+      // 3. Test Bot connection via getMe() with automatic retries for cloud boot latency
+      let botUser: any = null;
+      let lastErr: any = null;
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        try {
+          this.addLog('info', `Connecting to Telegram API (attempt ${attempt}/5)...`);
+          botUser = await bot.telegram.getMe();
+          if (botUser && botUser.username) {
+            break;
+          }
+        } catch (connErr: any) {
+          lastErr = connErr;
+          this.addLog('warn', `Telegram handshake attempt ${attempt}/5 failed (${connErr.message || 'Network delay'}). Retrying in 3 seconds...`);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+      }
+
+      if (!botUser) {
+        throw new Error(`Could not connect to Telegram API: ${lastErr?.message || 'Handshake failed after 5 attempts'}`);
+      }
+
       this.state.botInfo = botUser;
       this.addLog('success', `Telegram API handshake verified! Connected as @${botUser.username} (${botUser.first_name})`);
 
-      // 4. Launch polling
-      bot.launch();
+      // 4. Launch polling with clean drop of stale updates
+      bot.launch({
+        dropPendingUpdates: true,
+      }).catch((launchErr: any) => {
+        this.addLog('error', `Polling runtime error: ${launchErr.message}`);
+      });
 
       this.state.status = 'running';
       this.state.startedAt = new Date().toISOString();
