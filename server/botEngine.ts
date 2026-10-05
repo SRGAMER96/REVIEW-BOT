@@ -124,13 +124,16 @@ class BotManager {
       bot.catch((err: any, ctx: any) => {
         const errMsg = err?.message || String(err);
         if (errMsg.includes('409') || errMsg.includes('Conflict') || errMsg.includes('terminated by other getUpdates')) {
-          this.state.status = 'stopped';
-          this.state.errorMessage = 'Conflict: Bot is actively running on another server (e.g. Render). Local polling paused.';
-          this.addLog('warn', '⚠️ 409 Conflict: Bot is already active on another server (Render). Polling paused to prevent conflict.');
-          try {
-            bot.stop();
-          } catch {}
-          this.bot = null;
+          this.addLog('info', '⚠️ 409 Handover notice: Previous deploy container is releasing connection. Auto-resuming polling in 5 seconds...');
+          setTimeout(async () => {
+            if (this.bot === bot) {
+              try {
+                await bot.launch({ dropPendingUpdates: true });
+                this.state.status = 'running';
+                this.addLog('success', '🚀 Polling connection active and ready!');
+              } catch (reErr: any) {}
+            }
+          }, 5000);
         } else if (errMsg.includes('FetchError') || errMsg.includes('ETIMEDOUT') || errMsg.includes('ECONNRESET') || errMsg.includes('socket hang up')) {
           this.addLog('warn', `Telegram network latency/drop (auto-recovered): ${errMsg}`);
           console.warn(`[Telegraf Network Hiccup] ${errMsg}`);
@@ -1341,28 +1344,36 @@ class BotManager {
       this.state.botInfo = botUser;
       this.addLog('success', `Telegram API handshake verified! Connected as @${botUser.username} (${botUser.first_name})`);
 
-      // 4. Launch polling with clean drop of stale updates
-      bot.launch({
-        dropPendingUpdates: true,
-      }).catch((launchErr: any) => {
-        const msg = launchErr?.message || String(launchErr);
-        if (msg.includes('409') || msg.includes('Conflict') || msg.includes('terminated by other getUpdates')) {
-          this.state.status = 'stopped';
-          this.state.errorMessage = 'Conflict: Bot is actively running on another server (e.g. Render). Local polling paused.';
-          this.addLog('warn', '⚠️ 409 Conflict: Bot is already active on another server (Render). Polling paused to prevent conflict.');
-          try {
-            bot.stop();
-          } catch {}
-          this.bot = null;
-        } else {
-          this.addLog('error', `Polling runtime error: ${msg}`);
+      // 4. Launch polling with automatic handover retry
+      const startPolling = async (retryCount = 0) => {
+        try {
+          await bot.launch({ dropPendingUpdates: true });
+          this.state.status = 'running';
+          this.state.startedAt = new Date().toISOString();
+          this.startTime = Date.now();
+          this.addLog('success', `🚀 Bot is RUNNING LIVE! Users can open @${botUser.username} on Telegram to interact.`);
+        } catch (launchErr: any) {
+          const msg = launchErr?.message || String(launchErr);
+          if (msg.includes('409') || msg.includes('Conflict') || msg.includes('terminated by other getUpdates')) {
+            if (retryCount < 8) {
+              this.addLog('info', `Deploy handover in progress (attempt ${retryCount + 1}/8): previous container releasing connection. Resuming in 5 seconds...`);
+              setTimeout(() => {
+                if (this.bot === bot) {
+                  startPolling(retryCount + 1);
+                }
+              }, 5000);
+            } else {
+              this.state.status = 'stopped';
+              this.state.errorMessage = 'Conflict: Multiple bot instances active.';
+              this.addLog('warn', '⚠️ 409 Conflict: Another instance is still holding the connection.');
+            }
+          } else {
+            this.addLog('error', `Polling runtime error: ${msg}`);
+          }
         }
-      });
+      };
 
-      this.state.status = 'running';
-      this.state.startedAt = new Date().toISOString();
-      this.startTime = Date.now();
-      this.addLog('success', `🚀 Bot is RUNNING LIVE! Users can open @${botUser.username} on Telegram to interact.`);
+      startPolling();
 
       return { success: true };
     } catch (err: any) {

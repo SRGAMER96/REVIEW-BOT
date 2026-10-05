@@ -16,6 +16,19 @@ process.on('unhandledRejection', (reason) => {
   console.error('[Process UnhandledRejection]', reason);
 });
 
+// Graceful shutdown on SIGTERM / SIGINT for zero-downtime Render deployments
+const handleShutdown = async (signal: string) => {
+  console.log(`[Shutdown] Received ${signal}. Releasing Telegram polling lock...`);
+  try {
+    await botManager.stop();
+  } catch (e) {
+    console.error('Error stopping bot on shutdown:', e);
+  }
+  process.exit(0);
+};
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
