@@ -57,27 +57,38 @@ export const LiveBotRunner: React.FC = () => {
   const [tokenValidation, setTokenValidation] = useState<{ valid?: boolean; botUser?: any; error?: string } | null>(null);
   const [copiedLog, setCopiedLog] = useState(false);
 
-  // Poll status and logs
+  // Poll status and logs gracefully without noisy console errors
   const fetchStatus = async () => {
     try {
-      const res = await fetch('/api/bot/status');
+      const res = await fetch('/api/bot/status', {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
       if (res.ok) {
         const data = await res.json();
         setStatus(data);
       }
-      const logsRes = await fetch('/api/bot/logs');
+    } catch {
+      // Quietly ignore transient network polling drops during dev server reload
+    }
+
+    try {
+      const logsRes = await fetch('/api/bot/logs', {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
       if (logsRes.ok) {
         const logsData = await logsRes.json();
         setLogs(logsData);
       }
-    } catch (e) {
-      console.error('Error fetching bot status:', e);
+    } catch {
+      // Quietly ignore transient logs polling drops
     }
   };
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 2000);
+    const interval = setInterval(fetchStatus, 3000);
     return () => clearInterval(interval);
   }, []);
 

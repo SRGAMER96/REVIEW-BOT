@@ -117,14 +117,19 @@ class BotManager {
       const { User, Task, Submission, Withdrawal, Setting } = models;
 
       // 2. Initialize Telegraf
-      const bot = new Telegraf(token);
+      const bot = new Telegraf(token, { handlerTimeout: 90000 });
       this.bot = bot;
 
       // Global error handler
       bot.catch((err: any, ctx: any) => {
         const errMsg = err?.message || String(err);
-        this.addLog('error', `Telegram update error: ${errMsg}`);
-        console.error(`[Telegraf Error]`, err);
+        if (errMsg.includes('FetchError') || errMsg.includes('ETIMEDOUT') || errMsg.includes('ECONNRESET') || errMsg.includes('socket hang up')) {
+          this.addLog('warn', `Telegram network latency/drop (auto-recovered): ${errMsg}`);
+          console.warn(`[Telegraf Network Hiccup] ${errMsg}`);
+        } else {
+          this.addLog('error', `Telegram update error: ${errMsg}`);
+          console.error(`[Telegraf Error]`, err);
+        }
       });
 
       bot.use(session());
