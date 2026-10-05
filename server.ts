@@ -151,15 +151,21 @@ async function startServer() {
     }
   }
 
-  // Auto-start bot on boot
+  // Auto-start bot on boot only in production (Render) or if explicitly enabled
+  const shouldAutoStart = process.env.NODE_ENV === 'production' || !!process.env.RENDER || process.env.AUTO_START_BOT === 'true';
   const botToken = process.env.BOT_TOKEN || '8949126540:AAEcBGaulew5JRcODPSHlAjiT39O-Q0B4v0';
-  console.log('Starting Telegram bot engine automatically on server boot...');
-  botManager.start({
-    token: botToken,
-    adminId: Number(process.env.ADMIN_USER_ID) || 8962632792,
-    mongoUri: process.env.MONGO_URI,
-    supportUsername: process.env.SUPPORT_USERNAME || 'SRGAMER96',
-  });
+
+  if (shouldAutoStart) {
+    console.log('Production environment detected: Starting Telegram bot engine automatically...');
+    botManager.start({
+      token: botToken,
+      adminId: Number(process.env.ADMIN_USER_ID) || 8962632792,
+      mongoUri: process.env.MONGO_URI,
+      supportUsername: process.env.SUPPORT_USERNAME || 'SRGAMER96',
+    });
+  } else {
+    console.log('Development preview mode: Bot engine standby (ready to start manually or on Render deployment).');
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Telegram Bot Studio Server running on port ${PORT}`);

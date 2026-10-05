@@ -123,7 +123,15 @@ class BotManager {
       // Global error handler
       bot.catch((err: any, ctx: any) => {
         const errMsg = err?.message || String(err);
-        if (errMsg.includes('FetchError') || errMsg.includes('ETIMEDOUT') || errMsg.includes('ECONNRESET') || errMsg.includes('socket hang up')) {
+        if (errMsg.includes('409') || errMsg.includes('Conflict') || errMsg.includes('terminated by other getUpdates')) {
+          this.state.status = 'stopped';
+          this.state.errorMessage = 'Conflict: Bot is actively running on another server (e.g. Render). Local polling paused.';
+          this.addLog('warn', '⚠️ 409 Conflict: Bot is already active on another server (Render). Polling paused to prevent conflict.');
+          try {
+            bot.stop();
+          } catch {}
+          this.bot = null;
+        } else if (errMsg.includes('FetchError') || errMsg.includes('ETIMEDOUT') || errMsg.includes('ECONNRESET') || errMsg.includes('socket hang up')) {
           this.addLog('warn', `Telegram network latency/drop (auto-recovered): ${errMsg}`);
           console.warn(`[Telegraf Network Hiccup] ${errMsg}`);
         } else {
@@ -1337,7 +1345,18 @@ class BotManager {
       bot.launch({
         dropPendingUpdates: true,
       }).catch((launchErr: any) => {
-        this.addLog('error', `Polling runtime error: ${launchErr.message}`);
+        const msg = launchErr?.message || String(launchErr);
+        if (msg.includes('409') || msg.includes('Conflict') || msg.includes('terminated by other getUpdates')) {
+          this.state.status = 'stopped';
+          this.state.errorMessage = 'Conflict: Bot is actively running on another server (e.g. Render). Local polling paused.';
+          this.addLog('warn', '⚠️ 409 Conflict: Bot is already active on another server (Render). Polling paused to prevent conflict.');
+          try {
+            bot.stop();
+          } catch {}
+          this.bot = null;
+        } else {
+          this.addLog('error', `Polling runtime error: ${msg}`);
+        }
       });
 
       this.state.status = 'running';
